@@ -14,6 +14,7 @@ import uuid
 from tempfile import NamedTemporaryFile
 import shutil
 import requests # for sending new block to other nodes
+import cx_Oracle as oci # for connect Oracle Database
 
 PORT_NUMBER = 8099
 # 트랜잭션을 저장할 File Name
@@ -22,14 +23,32 @@ g_txFileName = "txData.csv"
 g_bcFileName = "blockchain.csv"
 g_nodelstFileName = "nodelst.csv"
 g_receiveNewBlock = "/node/receiveNewBlock"
-g_difficulty = 2
+g_difficulty = 4
 g_maximumTry = 100
 g_nodeList = {'trustedServerAddress':'8099'} # trusted server list, should be checked manually
+
+db_ip = '192.168.110.3'
+db_port = '1522'
+db_serviceName = 'xe'
+db_id = 'DJ2019'
+db_pw = 'DJ2019'
+db_userTable = 'BPS_USERS'
+db_blockTable = 'BPS_BLOCK'
+db_txTable = 'BPS_TXDATA'
+
+connectInfo = db_id + '/' + db_pw + '@' + db_ip + ':' + db_port + '/' + db_serviceName
+oracleConnect = oci.connect(connectInfo)
+oracleCursor = oracleConnect.cursor()
+selectQuery = 'SELECT * FROM ' + db_userTable
+oracleCursor.execute(selectQuery)
+resultData = oracleCursor.fetchall()
+oracleCursor.close()
+oracleConnect.close()
 
 
 class Block:
 
-    def __init__(self, index, previousHash, timestamp, data, currentHash, proof ):
+    def __init__(self, index, previousHash, timestamp, data, currentHash, proof):
         # 블럭 번호
         self.index = index
         # 이전 블럭의 해시
@@ -57,16 +76,17 @@ class txData:
         self.amount = amount
         # 수신자
         self.receiver = receiver
-        self.uuid = uuid
 
+        # Unique User Id
+        self.uuid = uuid
 
 def generateGenesisBlock():
     print("generateGenesisBlock is called")
     timestamp = time.time()
     print("time.time() => %f \n" % timestamp)
-    tempHash = calculateHash(0, '0', timestamp, "Genesis Block", 0)
+    tempHash = calculateHash(0, '0', timestamp, "Genesis Block", 0, 0)
     print(tempHash)
-    return Block(0, '0', timestamp, "Genesis Block",  tempHash,0)
+    return Block(0, '0', timestamp, "Genesis Block",  tempHash, 0, 0)
 
 def calculateHash(index, previousHash, timestamp, data, proof):
     value = str(index) + str(previousHash) + str(timestamp) + str(data) + str(proof)
@@ -74,7 +94,7 @@ def calculateHash(index, previousHash, timestamp, data, proof):
     return str(sha.hexdigest())
 
 def calculateHashForBlock(block):
-    return calculateHash(block.index, block.previousHash, block.timestamp, block.data, block.proof)
+    return calculateHash(block.index, block.previousHash, block.timestamp, block.data, block.proof, block.proofTime)
 
 def getLatestBlock(blockchain):
     return blockchain[len(blockchain) - 1]
@@ -85,24 +105,43 @@ def generateNextBlock(blockchain, blockData, timestamp, proof):
     nextTimestamp = timestamp
     nextHash = calculateHash(nextIndex, previousBlock.currentHash, nextTimestamp, blockData, proof)
     # index, previousHash, timestamp, data, currentHash, proof
-    return Block(nextIndex, previousBlock.currentHash, nextTimestamp, blockData, nextHash,proof)
+    return Block(nextIndex, previousBlock.currentHash, nextTimestamp, blockData, nextHash, proof)
 
 def writeBlockchain(blockchain):
     blockchainList = []
 
     for block in blockchain:
-        blockList = [block.index, block.previousHash, str(block.timestamp), block.data, block.currentHash,block.proof ]
+        blockList = [block.index, block.previousHash, str(block.timestamp), block.data, block.currentHash, block.proof]
         blockchainList.append(blockList)
 
     #[STARAT] check current db(csv) if broadcasted block data has already been updated
     lastBlock = None
+
+    connectComplete = False
+    cursorComplete = False
+    try:
+        connectInfo = db_id + '/' + db_pw + '@' + db_ip + ':' + db_port + '/' + db_serviceName
+        oracleConnect = oci.connect(connectInfo)
+        connectComplete = True
+        oracleCursor = oracleConnect.cursor()
+        cursorComplete = True
+        selectQuery = 'SELECT * FROM ' + db_blockTable
+        oracleCursor.execute(selectQuery)
+        blockReader = oracleCursor.fetchall()
+        last_line_number = len(blockReader)
+    except:
+        if (cursorComplete == True):
+            oracleCursor.close()
+        if (connectComplete == True):
+            oracleConnect.close
+
     try:
         with open(g_bcFileName, 'r',  newline='') as file:
             blockReader = csv.reader(file)
             last_line_number = row_count(g_bcFileName)
             for line in blockReader:
                 if blockReader.line_num == last_line_number:
-                    lastBlock = Block(line[0], line[1], line[2], line[3], line[4], line[5])
+                    lastBlock = Block(line[0], line[1], line[2], line[3], line[4], line[5], line[6])
 
         if int(lastBlock.index) + 1 != int(blockchainList[-1][0]):
             print("index sequence mismatch")
@@ -135,7 +174,7 @@ def readBlockchain(blockchainFilePath, mode = 'internal'):
         with open(blockchainFilePath, 'r',  newline='') as file:
             blockReader = csv.reader(file)
             for line in blockReader:
-                block = Block(line[0], line[1], line[2], line[3], line[4], line[5])
+                block = Block(line[0], line[1], line[2], line[3], line[4], line[5], line[6])
                 importedBlockchain.append(block)
 
         print("Pulling blockchain from csv...")
@@ -166,8 +205,8 @@ def updateTx(blockData) :
         reader = csv.reader(csvfile)
         writer = csv.writer(tempfile)
         for row in reader:
-            if row[4] in matchList:
-                print('updating row : ', row[4])
+            if row[6] in matchList:
+                print('updating row : ', row[6])
                 row[0] = 1
             writer.writerow(row)
 
@@ -180,7 +219,7 @@ def writeTx(txRawData):
     print(g_txFileName)
     txDataList = []
     for txDatum in txRawData:
-        txList = [txDatum.commitYN, txDatum.sender, txDatum.amount, txDatum.receiver, txDatum.uuid]
+        txList = [txDatum.commitYN, txDatum.sender, txDatum.amount, txDatum.receiver, txDatum.broker, txDatum.fee, txDatum.uuid]
         txDataList.append(txList)
 
     tempfile = NamedTemporaryFile(mode='w', newline='', delete=False)
@@ -216,7 +255,7 @@ def readTx(txFilePath):
             txReader = csv.reader(file)
             for row in txReader:
                 if row[0] == '0': # find unmined txData
-                    line = txData(row[0],row[1],row[2],row[3],row[4])
+                    line = txData(row[0],row[1],row[2],row[3],row[4], row[5], row[6])
                     importedTx.append(line)
         print("Pulling txData from csv...")
         return importedTx
@@ -229,7 +268,7 @@ def getTxData():
     if len(importedTx) > 0 :
         for i in importedTx:
             print(i.__dict__)
-            transaction = "["+ i.uuid + "]" "UserID " + i.sender + " sent " + i.amount + " bitTokens to UserID " + i.receiver + ". " #
+            transaction = "["+ i.uuid + "]" "UserID " + i.sender + " sent " + i.amount + " bitTokens to UserID " + i.receiver + ". broker : " + i.broker + ", fee : " + i.fee #
             print(transaction)
             strTxData += transaction
 
@@ -248,9 +287,11 @@ def mineNewBlock(difficulty=g_difficulty, blockchainPath=g_bcFileName):
     newBlockFound = False
 
     print('Mining a block...')
+    currentTime = time.time()
+    proofTime = currentTime - timestamp
 
     while not newBlockFound:
-        newBlockAttempt = generateNextBlock(blockchain, strTxData, timestamp, proof)
+        newBlockAttempt = generateNextBlock(blockchain, strTxData, timestamp, proof, proofTime)
         if newBlockAttempt.currentHash[0:difficulty] == '0' * difficulty:
             stopTime = time.time()
             timer = stopTime - timestamp
@@ -258,6 +299,8 @@ def mineNewBlock(difficulty=g_difficulty, blockchainPath=g_bcFileName):
             newBlockFound = True
         else:
             proof += 1
+            currentTime = time.time()
+            proofTime = currentTime - timestamp
 
     blockchain.append(newBlockAttempt)
     writeBlockchain(blockchain)
@@ -277,6 +320,8 @@ def isSameBlock(block1, block2):
     elif str(block1.currentHash) != str(block2.currentHash):
         return False
     elif str(block1.proof) != str(block2.proof):
+        return False
+    elif str(block1.proofTime) != str(block2.proofTime):
         return False
     return True
 
@@ -300,7 +345,33 @@ def newtx(txToMining):
     newtxData = []
     # transform given data to txData object
     for line in txToMining:
-        tx = txData(0, line['sender'], line['amount'], line['receiver'], uuid.uuid4())
+
+        try:
+            if (line['broker'] == ''):
+                line['fee'] = ''
+        except:
+            line['broker'] = ''
+            line['fee'] = ''
+
+        try:
+            feeInfo = line['fee']
+        except:
+            feeInfo = "0"
+
+        try:
+           feedAmount = float(line['amount']) * float(line['fee'])
+        except:
+            try:
+                checkError = float(line['amount'])
+                feedAmount = "0"
+            except:
+                line['amount'] = "0"
+                feedAmount = "0"
+
+        if (line['broker'] == ''):
+            feedAmount = ''
+
+        tx = txData(0, line['sender'], line['amount'], line['receiver'], line['broker'], feedAmount, uuid.uuid4())
         newtxData.append(tx)
 
     # limitation check : max 5 tx
@@ -322,7 +393,7 @@ def isValidChain(bcToValidate):
         with open(g_bcFileName, 'r',  newline='') as file:
             blockReader = csv.reader(file)
             for line in blockReader:
-                block = Block(line[0], line[1], line[2], line[3], line[4], line[5])
+                block = Block(line[0], line[1], line[2], line[3], line[4], line[5], line[6])
                 genesisBlock.append(block)
 #                break
     except:
@@ -333,7 +404,7 @@ def isValidChain(bcToValidate):
     for line in bcToValidate:
         # print(type(line))
         # index, previousHash, timestamp, data, currentHash, proof
-        block = Block(line['index'], line['previousHash'], line['timestamp'], line['data'], line['currentHash'], line['proof'])
+        block = Block(line['index'], line['previousHash'], line['timestamp'], line['data'], line['currentHash'], line['proof'], line['proofTime'])
         bcToValidateForBlock.append(block)
 
     #if it fails to read block data  from db(csv)
@@ -471,7 +542,7 @@ def compareMerge(bcDict):
             blockReader = csv.reader(file)
             #last_line_number = row_count(g_bcFileName)
             for line in blockReader:
-                block = Block(line[0], line[1], line[2], line[3], line[4], line[5])
+                block = Block(line[0], line[1], line[2], line[3], line[4], line[5], line[6])
                 heldBlock.append(block)
                 #if blockReader.line_num == 1:
                 #    block = Block(line[0], line[1], line[2], line[3], line[4], line[5])
@@ -494,7 +565,7 @@ def compareMerge(bcDict):
     for line in bcDict:
         # print(type(line))
         # index, previousHash, timestamp, data, currentHash, proof
-        block = Block(line['index'], line['previousHash'], line['timestamp'], line['data'], line['currentHash'], line['proof'])
+        block = Block(line['index'], line['previousHash'], line['timestamp'], line['data'], line['currentHash'], line['proof'], line['proofTime'])
         bcToValidateForBlock.append(block)
 
     # compare the given data with genesisBlock
@@ -526,7 +597,7 @@ def compareMerge(bcDict):
             blockchainList = []
             for block in bcToValidateForBlock:
                 blockList = [block.index, block.previousHash, str(block.timestamp), block.data,
-                             block.currentHash, block.proof]
+                             block.currentHash, block.proof, block.proofTime]
                 blockchainList.append(blockList)
             with open(g_bcFileName, "w", newline='') as file:
                 writer = csv.writer(file)
@@ -569,7 +640,7 @@ def compareMerge(bcDict):
         # [START] save it to csv
         blockchainList = []
         for block in bcToValidateForBlock:
-            blockList = [block.index, block.previousHash, str(block.timestamp), block.data, block.currentHash, block.proof]
+            blockList = [block.index, block.previousHash, str(block.timestamp), block.data, block.currentHash, block.proof, block.proofTime]
             blockchainList.append(blockList)
         with open(g_bcFileName, "w", newline='') as file:
             writer = csv.writer(file)
@@ -613,7 +684,7 @@ def initSvr():
                 for line in tmpbcData:
                     # print(type(line))
                     # index, previousHash, timestamp, data, currentHash, proof
-                    block = [line['index'], line['previousHash'], line['timestamp'], line['data'],line['currentHash'], line['proof']]
+                    block = [line['index'], line['previousHash'], line['timestamp'], line['data'],line['currentHash'], line['proof'], line['proofTime']]
                     blockchainList.append(block)
                 try:
                     with open(g_bcFileName, "w", newline='') as file:
@@ -633,6 +704,12 @@ class myHandler(BaseHTTPRequestHandler):
 
     # Handler for the GET requests
     def do_GET(self):
+        print("GETGETGETGETGETGET")
+
+        if None != re.search('/', self.path):
+
+            print("안녕하세요")
+
         data = []  # response json data
         if None != re.search('/block/*', self.path):
             self.send_response(200)
@@ -698,7 +775,7 @@ class myHandler(BaseHTTPRequestHandler):
         # ref : https://mafayyaz.wordpress.com/2013/02/08/writing-simple-http-server-in-python-with-rest-and-json/
 
     def do_POST(self):
-
+        print("POSTPOSTPOSTPOSTPOST")
         if None != re.search('/block/*', self.path):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
