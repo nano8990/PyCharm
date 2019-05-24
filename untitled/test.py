@@ -6,6 +6,7 @@ import json
 import re
 from urllib.parse import parse_qs
 import cgi
+import urllib3
 
 PORT_NUMBER = 8027
 
@@ -28,6 +29,8 @@ class myHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 # Send the html message
                 # self.wfile.write(bytes("<html><head><title>Title goes here.</title></head>", "utf-8"))
+                url =
+                self.wfile.write("")
 
             else:
                 self.send_response(400, 'Bad Request: record does not exist')

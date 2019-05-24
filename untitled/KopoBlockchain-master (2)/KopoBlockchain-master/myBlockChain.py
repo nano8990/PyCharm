@@ -14,7 +14,12 @@ import uuid
 from tempfile import NamedTemporaryFile
 import shutil
 import requests # for sending new block to other nodes
+
+#########################################################################################################
+
 import cx_Oracle as oci # for connect Oracle Database
+
+#--------------------------------------------------------------------------------------------------------
 
 PORT_NUMBER = 8099
 # 트랜잭션을 저장할 File Name
@@ -27,6 +32,8 @@ g_difficulty = 4
 g_maximumTry = 100
 g_nodeList = {'trustedServerAddress':'8099'} # trusted server list, should be checked manually
 
+#########################################################################################################
+
 db_ip = '192.168.110.3'
 db_port = '1522'
 db_serviceName = 'xe'
@@ -36,14 +43,16 @@ db_userTable = 'BPS_USERS'
 db_blockTable = 'BPS_BLOCK'
 db_txTable = 'BPS_TXDATA'
 
-connectInfo = db_id + '/' + db_pw + '@' + db_ip + ':' + db_port + '/' + db_serviceName
-oracleConnect = oci.connect(connectInfo)
-oracleCursor = oracleConnect.cursor()
-selectQuery = 'SELECT * FROM ' + db_userTable
-oracleCursor.execute(selectQuery)
-resultData = oracleCursor.fetchall()
-oracleCursor.close()
-oracleConnect.close()
+#--------------------------------------------------------------------------------------------------------
+
+# connectInfo = db_id + '/' + db_pw + '@' + db_ip + ':' + db_port + '/' + db_serviceName
+# oracleConnect = oci.connect(connectInfo)
+# oracleCursor = oracleConnect.cursor()
+# selectQuery = 'SELECT * FROM ' + db_userTable
+# oracleCursor.execute(selectQuery)
+# resultData = oracleCursor.fetchall()
+# oracleCursor.close()
+# oracleConnect.close()
 
 
 class Block:
@@ -117,6 +126,8 @@ def writeBlockchain(blockchain):
     #[STARAT] check current db(csv) if broadcasted block data has already been updated
     lastBlock = None
 
+#########################################################################################################
+
     connectComplete = False
     cursorComplete = False
     try:
@@ -128,12 +139,14 @@ def writeBlockchain(blockchain):
         selectQuery = 'SELECT * FROM ' + db_blockTable
         oracleCursor.execute(selectQuery)
         blockReader = oracleCursor.fetchall()
-        last_line_number = len(blockReader)
     except:
         if (cursorComplete == True):
             oracleCursor.close()
         if (connectComplete == True):
             oracleConnect.close
+
+
+#--------------------------------------------------------------------------------------------------------
 
     try:
         with open(g_bcFileName, 'r',  newline='') as file:
