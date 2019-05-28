@@ -717,12 +717,6 @@ class myHandler(BaseHTTPRequestHandler):
 
     # Handler for the GET requests
     def do_GET(self):
-        print("GETGETGETGETGETGET")
-
-        if None != re.search('/', self.path):
-
-            print("안녕하세요")
-
         data = []  # response json data
         if None != re.search('/block/*', self.path):
             self.send_response(200)
