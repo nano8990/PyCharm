@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+
+<head>
+  <meta charset="utf-8">
+  <title></title>
+</head>
+
+<body>
+  본인 ID : <input type="text" id="inputMyID" placeholder="myID" value=""><br>
+  본인 키 : <input type="text" id="inputMyKey" placeholder="myKey" value=""><br>
+  상대방 이름 : <input type="text" id="inputOpponentID" placeholder="OpponentID" value=""><br>
+  상대방 키 : <input type="text" id="inputOpponentKey" placeholder="OpponentKey" value=""><br>
+  송금액 : <input type="text" id="inputMoney" placeholder="money" value=""><br>
+  <input type="button" id="txBtn" value="송수신">
+  <br>
+  <br>
+  <br>
+  <br>
+  <input type="button" id="homeBtn" value="홈으로 돌아가기">
+
+
+
+</body>
+<script src="http://code.jquery.com/jquery-latest.min.js"> </script>
+<script>
+  $("#txBtn").click(function() {
+    var inputMyID = $("#inputMyID").val();
+    var inputMyKey = $("#inputMyKey").val();
+    var inputOpponentID = $("#inputOpponentID").val();
+    var inputOpponentKey = $("#inputOpponentKey").val();
+    var inputMoney = $("#inputMoney").val();
+    $.ajax({
+      url: `http://localhost:8099/tx_data`,
+      type: 'POST',
+      data: {
+        inputMyID: inputMyID,
+        inputMyKey: inputMyKey,
+        inputOpponentID: inputOpponentID,
+        inputOpponentKey: inputOpponentKey,
+        inputMoney: inputMoney
+      },
+      success: function(response) {
+        console.log(response);
+        if (response.SUCCESS == "FAILED") {
+          alert("값을 모두 입력해주세요.")
+        } else if (response.SUCCESS == "NUMBER") {
+          alert("송금액은 숫자를 입력해주세요.")
+        } else if (response.SUCCESS == "NO_MATCH_SENDER") {
+          alert("송신자 정보가 잘못되었습니다.")
+        } else if (response.SUCCESS == "NO_MATCH_RECEIVER") {
+          alert("수신자 정보가 잘못되었습니다.")
+        } else if (response.SUCCESS == "ACCEPTED") {
+          alert("입력되었습니다.")
+        } else if (response.SUCCESS == "LACK_OF_USABLE_AMOUNT") {
+          alert(`사용가능한 잔액이 부족합니다.\n사용가능금액 : ${response.USABLE}`)
+        } else if (response.SUCCESS == "ZERO_ENTERED") {
+          alert("양수만 입력해주세요.")
+        } else if (response.SUCCESS == "ERROR") {
+          alert("오류 발생")
+        }
+      }
+    });
+  });
+
+  $("#homeBtn").click(function() {
+
+    location.href = "/blockchainHome"
+  });
+</script>
+
+</html>
