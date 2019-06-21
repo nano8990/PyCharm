@@ -17,7 +17,7 @@ import codecs
 from random import *
 
 
-PORT_NUMBER = 8098
+PORT_NUMBER = 8099
 db_ip = '192.168.110.3'
 db_port = '1522'
 db_serviceName = 'xe'
